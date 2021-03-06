@@ -1,0 +1,226 @@
+apiVersion: v1
+kind: Template
+objects:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: "${SERVICE_NAME}-config"
+      labels:
+        app: ${SERVICE_NAME}
+    data:
+      redis_node1.yml: |
+        dyn_o_mite:
+          datacenter: dc1
+          rack: rack1
+          dyn_listen: 0.0.0.0:8101
+          dyn_seeds:
+          - ${SECOND_DATACENTER_IP}:8101:rack2:dc2:${SECOND_DATACENTER_TOKEN}
+          listen: 0.0.0.0:8102
+          servers:
+          - ${FIRST_DATACENTER_IP}:22122:1
+          tokens: '${FIRST_DATACENTER_TOKEN}'
+          secure_server_option: datacenter
+          pem_key_file: dynomite.pem
+          data_store: 0
+          stats_listen: 0.0.0.0:22222
+      redis_node2.yml: |
+        dyn_o_mite:
+          datacenter: dc2
+          rack: rack2
+          dyn_listen: 0.0.0.0:8101
+          dyn_seeds:
+          - ${FIRST_DATACENTER_IP}:8101:rack1:dc1:${FIRST_DATACENTER_TOKEN}
+          listen: 0.0.0.0:8102
+          servers:
+          - ${SECOND_DATACENTER_IP}:22122:1
+          tokens: '${SECOND_DATACENTER_TOKEN}'
+          secure_server_option: datacenter
+          pem_key_file: dynomite.pem
+          data_store: 0
+          stats_listen: 0.0.0.0:22222
+  - apiVersion: v1
+    kind: DeploymentConfig
+    metadata:
+      labels:
+        app: ${SERVICE_NAME}
+      name: ${SERVICE_NAME}
+    spec:
+      replicas: 1
+      selector:
+        app: ${SERVICE_NAME}
+      strategy:
+        type: Recreate
+        activeDeadlineSeconds: 64800
+        recreateParams:
+          timeoutSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app: ${SERVICE_NAME}
+        spec:
+          containers:
+            - name: ${SERVICE_NAME}
+              image: mostafahosseinime/dynomite-openshift:latest
+              command: ["dynomite", "-c", "${DYNOMITE_CONFIG_FILE}"]
+              imagePullPolicy: Always
+              ports:
+                - containerPort: 8101
+                  protocol: TCP
+                - containerPort: 22222
+                  protocol: TCP
+                - containerPort: 8102
+                  protocol: TCP
+              volumeMounts:
+                - name: ${SERVICE_NAME}-config
+                  mountPath: /dynomite/redis_node1.yml
+                  subPath: redis_node1.yml
+                  readOnly: true
+                - name: ${SERVICE_NAME}-config
+                  mountPath: /dynomite/redis_node2.yml
+                  subPath: redis_node2.yml
+                  readOnly: true
+              resources:
+                limits:
+                  memory: "1000Mi"
+            - image: redis 
+              name: redis
+              command:
+                - "redis-server"
+                - "--port"
+                - "22122"
+                - "--protected-mode"
+                - "no"
+              ports:
+                - containerPort: 22122
+                  protocol: TCP
+              readinessProbe:
+                tcpSocket:
+                  port: 22122
+              livenessProbe:
+                exec:
+                  command:
+                    - "redis-cli"
+                    - "-p"
+                    - "22122"
+                    - "ping"
+                    - "--protected-mode"
+                    - "no"
+                initialDelaySeconds: 5
+                periodSeconds: 10
+              volumeMounts:
+                - name: redis-data
+                  mountPath: /data
+              resources:
+                limits:
+                  memory: "1000Mi"
+            - image: oliver006/redis_exporter
+              imagePullPolicy: Always
+              name: exporter 
+              ports:
+                - containerPort: 9121
+              env:
+                - name: REDIS_ADDR
+                  value: "redis://127.0.0.1:22122"
+              resources: {}
+
+          volumes:
+            - name: ${SERVICE_NAME}-config
+              configMap:
+                name: ${SERVICE_NAME}-config
+            - name: redis-data
+              persistentVolumeClaim:
+                claimName: redis
+          dnsPolicy: ClusterFirst
+          restartPolicy: Always
+          terminationGracePeriodSeconds: 30
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: ${SERVICE_NAME}
+      name: ${SERVICE_NAME}
+    spec:
+      type: LoadBalancer
+      ports:
+      - name: redis
+        port: 22122
+        protocol: TCP
+        targetPort: 22122
+      - name: dynomite-peer
+        port: 8101
+        protocol: TCP
+        targetPort: 8101
+      - name: dynomite-stats
+        port: 22222
+        protocol: TCP
+        targetPort: 22222
+      - name: dynomite
+        port: 8102
+        protocol: TCP
+        targetPort: 8102
+      - name: exporter
+        port: 9121
+        protocol: TCP
+        targetPort: 9121
+      selector:
+        app: ${SERVICE_NAME}
+        deploymentconfig: ${SERVICE_NAME}
+    status:
+      loadBalancer:
+        ingress:
+        - ip: ${EXTERNAL_IP}
+
+  - apiVersion: v1
+    kind: Route
+    metadata:
+      labels:
+        app: ${SERVICE_NAME}
+      name: ${SERVICE_NAME}
+    spec:
+      port:
+        targetPort: exporter
+      to:
+        kind: Service
+        name: ${SERVICE_NAME}
+      wildcardPolicy: None
+
+
+parameters:
+  - name: FIRST_DATACENTER_NAME
+    displayName: First Datacenter Name
+    required: true
+    value: "dc-1"
+  - name: FIRST_DATACENTER_IP
+    displayName: First Datacenter IP
+    required: false
+  - name: SECOND_DATACENTER_NAME
+    displayName: Second Datacenter Name
+    required: true
+    value: "dc-2"
+  - name: SECOND_DATACENTER_IP
+    displayName: Second Datacenter IP
+    required: false
+  - name: FIRST_DATACENTER_TOKEN
+    displayName: First Datacenter Token
+    required: true
+    value: "12345678"
+  - name: SECOND_DATACENTER_TOKEN
+    displayName: Second Datacenter Token
+    required: true
+    value: "1383429731"
+  - name: SERVICE_NAME
+    displayName: Service Name
+    required: true
+    value: "dynomite"
+  - name: CREATED_BY
+    description: "name of deployer"
+    displayName: "created by"
+    required: true
+    value: "dynomite"
+  - name: EXTERNAL_IP
+    displayName: External IP
+    required: true
+  - name: DYNOMITE_CONFIG_FILE
+    displayName: Dynimite Config pem_key_file
+    required: true
