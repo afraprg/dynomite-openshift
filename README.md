@@ -9,7 +9,7 @@ This repository is created for having a Redis Master-Master with using Dynomite,
 
 # Configuration
 
-we have two files in the openshift.yaml > ConfigMap (redis_node1.yml, redis_node2.yml) you should change this config based on your requirement and you can get help from [the main Dynomite repository](https://github.com/Netflix/dynomite/tree/dev/conf), also you have to create a key file with this command and put file paths to configMap
+we have two files in the [openshift.yaml > ConfigMap](https://github.com/afraprg/dynomite-openshift/blob/02260696e801d57dd9040842b501444d9479f29e/openshift.yaml#L5)  (redis_node1.yml, redis_node2.yml) you should change this config based on your requirement and you can get help from [the main Dynomite repository](https://github.com/Netflix/dynomite/tree/dev/conf), also you have to create a key file with this command and put file paths to configMap
 
     openssl req -x509 -newkey rsa:4096 -keyout dynomite.pem -out cert.pem -days 10000 -nodes
 
