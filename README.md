@@ -5,7 +5,7 @@ As you might know Master-Master replication is only available for Redis labs ent
 
 # Introduction
 
-This repository is created for having a Redis Master-Master using [Dynomite](https://github.com/Netflix/dynomite), also in this repository, I have a [Redis-exporter](https://github.com/oliver006/redis_exporter) for the monitor in Grafana.
+This repository is created for having a Redis Master-Master using [Dynomite](https://github.com/Netflix/dynomite), also in this repository, I used a [Redis-exporter](https://github.com/oliver006/redis_exporter) for the monitor in Grafana.
 
 # Configuration
 
